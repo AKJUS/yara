@@ -39,10 +39,18 @@ static void basic_tests()
 
   yr_initialize();
 
-  // Create arena with 1 buffers of 10 bytes of initial size
+  assert_true_expr(yr_arena_create(0, 10, &arena) == ERROR_INVALID_ARGUMENT);
+  assert_true_expr(
+      yr_arena_create(YR_MAX_ARENA_BUFFERS + 1, 10, &arena) ==
+      ERROR_INVALID_ARGUMENT);
+
+  // Create arena with 2 buffers of 10 bytes of initial size
   assert_true_expr(yr_arena_create(2, 10, &arena) == ERROR_SUCCESS);
 
   YR_ARENA_REF ref;
+
+  assert_true_expr(
+      yr_arena_allocate_memory(arena, 2, 5, &ref) == ERROR_INVALID_ARGUMENT);
 
   // Allocate 5 bytes.
   assert_true_expr(
@@ -330,6 +338,45 @@ static void corrupt_reloc_target_tests()
   yr_finalize();
 }
 
+static void corrupt_num_buffers_tests()
+{
+  yr_initialize();
+
+  // Test loading with num_buffers = 0
+  uint8_t data[6] = {'Y', 'A', 'R', 'A', YR_ARENA_FILE_VERSION, 0};
+  FILE* fh = fopen("test-arena-corrupt-num0", "w+b");
+  assert_true_expr(fh != NULL);
+  fwrite(data, 1, sizeof(data), fh);
+  fflush(fh);
+  fseek(fh, 0, SEEK_SET);
+
+  YR_STREAM stream;
+  stream.user_data = fh;
+  stream.read = (YR_STREAM_READ_FUNC) fread;
+  stream.write = (YR_STREAM_WRITE_FUNC) fwrite;
+
+  YR_ARENA* arena = NULL;
+  assert_true_expr(
+      yr_arena_load_stream(&stream, &arena) == ERROR_CORRUPT_FILE);
+
+  fclose(fh);
+
+  // Test loading with num_buffers > YR_MAX_ARENA_BUFFERS
+  data[5] = YR_MAX_ARENA_BUFFERS + 1;
+  fh = fopen("test-arena-corrupt-num-max", "w+b");
+  assert_true_expr(fh != NULL);
+  fwrite(data, 1, sizeof(data), fh);
+  fflush(fh);
+  fseek(fh, 0, SEEK_SET);
+
+  stream.user_data = fh;
+  assert_true_expr(
+      yr_arena_load_stream(&stream, &arena) == ERROR_CORRUPT_FILE);
+
+  fclose(fh);
+  yr_finalize();
+}
+
 int main(int argc, char** argv)
 {
   int result = 0;
@@ -342,6 +389,7 @@ int main(int argc, char** argv)
   corrupt_stream_tests();
   corrupt_reloc_offset_tests();
   corrupt_reloc_target_tests();
+  corrupt_num_buffers_tests();
 
   YR_DEBUG_FPRINTF(
       1, stderr, "} = %d // %s() in %s\n", result, __FUNCTION__, argv[0]);

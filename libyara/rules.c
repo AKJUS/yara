@@ -325,6 +325,9 @@ YR_API int yr_rules_scan_proc(
 
 int yr_rules_from_arena(YR_ARENA* arena, YR_RULES** rules)
 {
+  if (arena->num_buffers < YR_NUM_SECTIONS)
+    return ERROR_CORRUPT_FILE;
+
   YR_SUMMARY* summary = (YR_SUMMARY*) yr_arena_get_ptr(
       arena, YR_SUMMARY_SECTION, 0);
 

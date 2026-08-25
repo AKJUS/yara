@@ -886,6 +886,55 @@ void test_load_rules_corrupt_ac_transition()
   yr_finalize();
 }
 
+void test_load_rules_corrupt_num_buffers()
+{
+  yr_initialize();
+
+  // Test num_buffers = 0
+  uint8_t data0[] = {'Y', 'A', 'R', 'A', YR_ARENA_FILE_VERSION, 0, 4, 0};
+  FILE* fh = fopen("test-corrupt-num0.yarc", "wb");
+  assert_true_expr(fh != NULL);
+  assert_true_expr(fwrite(data0, 1, sizeof(data0), fh) == sizeof(data0));
+  fclose(fh);
+
+  YR_RULES* rules = NULL;
+  int result = yr_rules_load("test-corrupt-num0.yarc", &rules);
+  if (result != ERROR_CORRUPT_FILE)
+  {
+    fprintf(
+        stderr,
+        "test_load_rules_corrupt_num_buffers (num_buffers=0): expecting "
+        "ERROR_CORRUPT_FILE, got %d\n",
+        result);
+    exit(EXIT_FAILURE);
+  }
+
+  // Test num_buffers = 1 (fewer than YR_NUM_SECTIONS)
+  uint8_t data1[6 + 12];
+  memset(data1, 0, sizeof(data1));
+  memcpy(data1, "YARA", 4);
+  data1[4] = YR_ARENA_FILE_VERSION;
+  data1[5] = 1;
+
+  fh = fopen("test-corrupt-num1.yarc", "wb");
+  assert_true_expr(fh != NULL);
+  assert_true_expr(fwrite(data1, 1, sizeof(data1), fh) == sizeof(data1));
+  fclose(fh);
+
+  result = yr_rules_load("test-corrupt-num1.yarc", &rules);
+  if (result != ERROR_CORRUPT_FILE)
+  {
+    fprintf(
+        stderr,
+        "test_load_rules_corrupt_num_buffers (num_buffers=1): expecting "
+        "ERROR_CORRUPT_FILE, got %d\n",
+        result);
+    exit(EXIT_FAILURE);
+  }
+
+  yr_finalize();
+}
+
 void test_scanner()
 {
   const char* buf = "dummy";
@@ -1521,6 +1570,7 @@ int main(int argc, char** argv)
   test_load_rules_corrupt_summary();
   test_load_rules_bad_external_type();
   test_load_rules_corrupt_ac_transition();
+  test_load_rules_corrupt_num_buffers();
   test_scanner();
   test_xor_key_string_in_atom();
   test_ast_callback();

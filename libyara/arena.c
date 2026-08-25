@@ -137,7 +137,7 @@ static int _yr_arena_allocate_memory(
     size_t size,
     YR_ARENA_REF* ref)
 {
-  if (buffer_id > arena->num_buffers)
+  if (buffer_id >= arena->num_buffers)
     return ERROR_INVALID_ARGUMENT;
 
   YR_ARENA_BUFFER* b = &arena->buffers[buffer_id];
@@ -234,6 +234,9 @@ int yr_arena_create(
     size_t initial_buffer_size,
     YR_ARENA** arena)
 {
+  if (num_buffers == 0 || num_buffers > YR_MAX_ARENA_BUFFERS)
+    return ERROR_INVALID_ARGUMENT;
+
   YR_ARENA* new_arena = (YR_ARENA*) yr_calloc(1, sizeof(YR_ARENA));
 
   if (new_arena == NULL)
@@ -555,8 +558,8 @@ int yr_arena_load_stream(YR_STREAM* stream, YR_ARENA** arena)
   if (hdr.version != YR_ARENA_FILE_VERSION)
     return ERROR_UNSUPPORTED_FILE_VERSION;
 
-  if (hdr.num_buffers > YR_MAX_ARENA_BUFFERS)
-    return ERROR_INVALID_FILE;
+  if (hdr.num_buffers == 0 || hdr.num_buffers > YR_MAX_ARENA_BUFFERS)
+    return ERROR_CORRUPT_FILE;
 
   YR_ARENA_FILE_BUFFER buffers[YR_MAX_ARENA_BUFFERS];
 
