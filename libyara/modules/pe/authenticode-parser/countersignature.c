@@ -123,7 +123,7 @@ Countersignature* pkcs9_countersig_new(
     result->digest_alg = strdup(OBJ_nid2ln(digestnid));
 
     const ASN1_TYPE* sign_time = PKCS7_get_signed_attribute(si, NID_pkcs9_signingTime);
-    if (!sign_time) {
+    if (!sign_time || !sign_time->value.utctime) {
         result->verify_flags = COUNTERSIGNATURE_VFY_TIME_MISSING;
         goto end;
     }
@@ -142,7 +142,7 @@ Countersignature* pkcs9_countersig_new(
 
     /* Get digest that corresponds to decrypted encrypted digest in signature */
     ASN1_TYPE* messageDigest = PKCS7_get_signed_attribute(si, NID_pkcs9_messageDigest);
-    if (!messageDigest) {
+    if (!messageDigest || !messageDigest->value.octet_string) {
         result->verify_flags = COUNTERSIGNATURE_VFY_DIGEST_MISSING;
         goto end;
     }
@@ -283,7 +283,10 @@ STACK_OF(X509) * IMPL_FUNC_NAME(get_signers, pkcs7)(CountersignatureImpl* impl)
 {
     assert(impl->type == CS_IMPL_PKCS7);
 
-    return PKCS7_get0_signers(impl->pkcs7, impl->pkcs7->d.sign->cert, 0);
+    return PKCS7_get0_signers(
+        impl->pkcs7,
+        impl->pkcs7->d.sign ? impl->pkcs7->d.sign->cert : NULL,
+        0);
 }
 
 STACK_OF(X509) * IMPL_FUNC_NAME(get_signers, cms)(CountersignatureImpl* impl)

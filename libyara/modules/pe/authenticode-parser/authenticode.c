@@ -74,20 +74,20 @@ static SpcIndirectDataContent* get_content(PKCS7* content)
     if (OBJ_obj2nid(content->type) != OBJ_txt2nid(NID_spc_indirect_data))
         return NULL;
 
-    SpcIndirectDataContent* spcContent = SpcIndirectDataContent_new();
-    if (!spcContent)
+    if (!content->d.other || !content->d.other->value.sequence)
         return NULL;
 
     int len = ASN1_STRING_length(content->d.other->value.sequence);
     const uint8_t* data = ASN1_STRING_get0_data(content->d.other->value.sequence);
 
-    d2i_SpcIndirectDataContent(&spcContent, &data, len);
-
-    return spcContent;
+    return d2i_SpcIndirectDataContent(NULL, &data, len);
 }
 
 static char* parse_program_name(ASN1_TYPE* spcAttr)
 {
+    if (!spcAttr || !spcAttr->value.sequence)
+        return NULL;
+
     const uint8_t* spcData = ASN1_STRING_get0_data(spcAttr->value.sequence);
     int spcLen = ASN1_STRING_length(spcAttr->value.sequence);
     SpcSpOpusInfo* spcInfo = d2i_SpcSpOpusInfo(NULL, &spcData, spcLen);
@@ -129,7 +129,7 @@ static void parse_nested_authenticode(PKCS7_SIGNER_INFO* si, AuthenticodeArray* 
 
     for (int i = 0; i < attrCount; ++i) {
         ASN1_TYPE* nested = X509_ATTRIBUTE_get0_type(attr, i);
-        if (nested == NULL)
+        if (nested == NULL || nested->value.sequence == NULL)
             break;
         int len = ASN1_STRING_length(nested->value.sequence);
         const uint8_t* data = ASN1_STRING_get0_data(nested->value.sequence);
@@ -160,7 +160,7 @@ static void parse_pkcs9_countersig(PKCS7* p7, Authenticode* auth)
 
     for (int i = 0; i < attrCount; ++i) {
         ASN1_TYPE* nested = X509_ATTRIBUTE_get0_type(attr, i);
-        if (nested == NULL)
+        if (nested == NULL || nested->value.sequence == NULL)
             break;
         int len = ASN1_STRING_length(nested->value.sequence);
         const uint8_t* data = ASN1_STRING_get0_data(nested->value.sequence);
@@ -191,7 +191,7 @@ static void parse_ms_countersig(PKCS7* p7, Authenticode* auth)
 
     for (int i = 0; i < attrCount; ++i) {
         ASN1_TYPE* nested = X509_ATTRIBUTE_get0_type(attr, i);
-        if (nested == NULL)
+        if (nested == NULL || nested->value.sequence == NULL)
             break;
         int len = ASN1_STRING_length(nested->value.sequence);
         const uint8_t* data = ASN1_STRING_get0_data(nested->value.sequence);
@@ -209,6 +209,11 @@ static void parse_ms_countersig(PKCS7* p7, Authenticode* auth)
 
 static bool authenticode_verify(PKCS7* p7, PKCS7_SIGNER_INFO* si, X509* signCert)
 {
+    if (!p7 || !p7->d.sign || !p7->d.sign->contents ||
+        !p7->d.sign->contents->d.other ||
+        !p7->d.sign->contents->d.other->value.sequence)
+        return false;
+
     const uint8_t* contentData = ASN1_STRING_get0_data(p7->d.sign->contents->d.other->value.sequence);
     long contentLen = ASN1_STRING_length(p7->d.sign->contents->d.other->value.sequence);
 
@@ -311,6 +316,12 @@ AuthenticodeArray* authenticode_new(const uint8_t* data, int32_t len)
     }
 
     DigestInfo* messageDigest = dataContent->messageDigest;
+    if (!messageDigest || !messageDigest->digestAlgorithm ||
+        !messageDigest->digestAlgorithm->algorithm || !messageDigest->digest) {
+        auth->verify_flags = AUTHENTICODE_VFY_BAD_CONTENT;
+        SpcIndirectDataContent_free(dataContent);
+        goto end;
+    }
 
     int digestnid = OBJ_obj2nid(messageDigest->digestAlgorithm->algorithm);
     auth->digest_alg = strdup(OBJ_nid2ln(digestnid));
@@ -364,7 +375,7 @@ AuthenticodeArray* authenticode_new(const uint8_t* data, int32_t len)
 
     /* Get the Signers digest of Authenticode content */
     ASN1_TYPE* digest = PKCS7_get_signed_attribute(si, NID_pkcs9_messageDigest);
-    if (!digest) {
+    if (!digest || !digest->value.asn1_string) {
         auth->verify_flags = AUTHENTICODE_VFY_DIGEST_MISSING;
         goto end;
     }
